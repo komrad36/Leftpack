@@ -2,7 +2,7 @@
 Extremely fast (up to 39x faster than naive) AVX2 leftpack/compress implementations (keep and contiguously pack a subset of elements)
 
 
-Sometimes you have an array of elements and a corresponding bitarray indicating a subset of elements to keep; that is, to output contiguously while discarding the rest, often called a left-pack or compress operation.
+Sometimes you have an array of elements and a corresponding bitmask/bitarray indicating a subset of elements to keep; that is, to output contiguously while discarding the rest, often called a left-pack or compress operation.
 
 The naive way to do this is:
 
@@ -28,7 +28,7 @@ for (U64 i = 0; i < k; ++i)
 return n;
 ```
 
-But we can still do much better. If you have AVX512F and, for some word sizes, AVX512_VBMI2, there are the VCOMPRESS instructions, but they're kinda slow; in particular, for the common case of having a scalar bitarray of which elements to keep, we can beat them. And lots of environments still don't have AVX512 or the required subextensions anyway, so it's proven useful to have these highly efficient AVX2 implementations.
+But we can still do much better. If you have AVX512F and, for some word sizes, AVX512_VBMI2, there are the VCOMPRESS instructions, but they're kinda slow; in particular, for the common case of having a bitmask/bitarray of which elements to keep, we can beat them. And lots of environments still don't have AVX512 or the required subextensions anyway, so it's proven useful to have these highly efficient AVX2 implementations.
 
 
 ## Approx. speedup vs. naive methods ##  
