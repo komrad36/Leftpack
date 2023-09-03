@@ -1,5 +1,5 @@
 # Leftpack
-Extremely fast (up to 35x faster than naive) AVX2 leftpack/compress implementations (keep and contiguously pack a subset of elements)
+Extremely fast (up to 39x faster than naive) AVX2 leftpack/compress implementations (keep and contiguously pack a subset of elements)
 
 
 Sometimes you have an array of elements and a corresponding bitarray indicating a subset of elements to keep; that is, to output contiguously while discarding the rest, often called a left-pack or compress operation.
