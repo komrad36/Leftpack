@@ -19,7 +19,7 @@ using I64 = int64_t;
 //
 // DO NOT USE THIS VERSION on AMD Zen1/Zen2 machines; it's wicked slow there due to pdep/pext. This is fixed in Zen3 and
 // after, so this version is preferred for any arch other than Zen1/Zen2 specifically.
-static inline U64 Leftpack8(U8* __restrict pOut, const U8* __restrict p, U64 m)
+static inline U64 Leftpack8(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U64 k1[] = { 0x0F0F0F0F0F0F0F0FULL, 0x0F0F0F0F0F0F0F0FULL, 0x0F0F0F0F0F0F0F0FULL, 0x0F0F0F0F0F0F0F0FULL };
     const __m256i y1 = _mm256_setr_m128i(
@@ -29,7 +29,7 @@ static inline U64 Leftpack8(U8* __restrict pOut, const U8* __restrict p, U64 m)
     const __m256i y2 = _mm256_unpacklo_epi8(y1, _mm256_srli_epi16(y1, 4));
     const __m256i y3 = _mm256_and_si256(y2, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k1)));
     const __m256i y4 = _mm256_shuffle_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y3);
-    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(pOut + U32(_mm_popcnt_u32(U32(m & 0xFFFFU)))), reinterpret_cast<__m128i*>(pOut), y4);
+    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(uintptr_t(pOut) + U32(_mm_popcnt_u32(U32(m & 0xFFFFU)))), reinterpret_cast<__m128i*>(pOut), y4);
     return U32(_mm_popcnt_u32(U32(m)));
 }
 
@@ -39,7 +39,7 @@ static inline U64 Leftpack8(U8* __restrict pOut, const U8* __restrict p, U64 m)
 //
 // This version is slower on any arch other than AMD Zen1/Zen2; prefer the other version, Leftpack8, unless you are
 // targeting Zen1/Zen2.
-static inline U64 Leftpack8_Zen2(U8* __restrict pOut, const U8* __restrict p, U64 m)
+static inline U64 Leftpack8_Zen2(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
         0x00000000, 0x00000000, 0x00000001, 0x00000010, 0x00000002, 0x00000020, 0x00000021, 0x00000210, 0x00000003, 0x00000030, 0x00000031, 0x00000310, 0x00000032, 0x00000320, 0x00000321, 0x00003210,
@@ -113,7 +113,7 @@ vextracti128 $1, %4, (%9, %1, 1)
     const __m256i y1 = _mm256_setr_m128i(x1, x2);
     const __m256i y2 = _mm256_and_si256(_mm256_unpacklo_epi8(y1, _mm256_srli_epi16(y1, 4)), _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k2)));
     const __m256i y3 = _mm256_shuffle_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y2);
-    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(pOut + U32(_mm_popcnt_u32(U32(m & 0xFFFFU)))), reinterpret_cast<__m128i*>(pOut), y3);
+    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(uintptr_t(pOut) + U32(_mm_popcnt_u32(U32(m & 0xFFFFU)))), reinterpret_cast<__m128i*>(pOut), y3);
     return U32(_mm_popcnt_u32(U32(m)));
 #endif
 }
@@ -121,7 +121,7 @@ vextracti128 $1, %4, (%9, %1, 1)
 // Leftpack 16 16-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 16-bit
 // bitmask 'm'. Returns number of elements output. May unconditionally write up to 16 elements to output, regardless of
 // how many are actually output.
-static inline U64 Leftpack16(U16* __restrict pOut, const U16* __restrict p, U64 m)
+static inline U64 Leftpack16(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
         0x00000000, 0x00000001, 0x00000003, 0x00000301, 0x00000005, 0x00000501, 0x00000503, 0x00050301, 0x00000007, 0x00000701, 0x00000703, 0x00070301, 0x00000705, 0x00070501, 0x00070503, 0x07050301,
@@ -150,7 +150,7 @@ static inline U64 Leftpack16(U16* __restrict pOut, const U16* __restrict p, U64 
     const __m256i y3 = _mm256_srlv_epi32(y2, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k2)));
     const __m256i y4 = _mm256_and_si256(y3, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k3)));
     const __m256i y5 = _mm256_shuffle_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y4);
-    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(pOut + n1), reinterpret_cast<__m128i*>(pOut), y5);
+    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(uintptr_t(pOut) + 2ULL * n1), reinterpret_cast<__m128i*>(pOut), y5);
     return n2;
 }
 
@@ -160,7 +160,7 @@ static inline U64 Leftpack16(U16* __restrict pOut, const U16* __restrict p, U64 
 //
 // DO NOT USE THIS VERSION on AMD Zen1/Zen2 machines; it's wicked slow there due to pdep/pext. This is fixed in Zen3 and
 // after, so this version is preferred for any arch other than Zen1/Zen2 specifically.
-static inline U64 Leftpack32(U32* __restrict pOut, const U32* __restrict p, U64 m)
+static inline U64 Leftpack32(void* pOut, const void* p, U64 m)
 {
     const __m256i y1 = _mm256_cvtepu8_epi32(_mm_cvtsi64_si128(I64(_pext_u64(0x0706050403020100ULL, 0xFFULL * _pdep_u64(m, 0x0101010101010101ULL)))));
     const __m256i y2 = _mm256_permutevar8x32_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y1);
@@ -174,7 +174,7 @@ static inline U64 Leftpack32(U32* __restrict pOut, const U32* __restrict p, U64 
 //
 // This version is slower on any arch other than AMD Zen1/Zen2; prefer the other version, Leftpack8, unless you are
 // targeting Zen1/Zen2.
-static inline U64 Leftpack32_Zen2(U32* __restrict pOut, const U32* __restrict p, U64 m)
+static inline U64 Leftpack32_Zen2(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
         0x00000000, 0x00000000, 0x00000001, 0x00000010, 0x00000002, 0x00000020, 0x00000021, 0x00000210, 0x00000003, 0x00000030, 0x00000031, 0x00000310, 0x00000032, 0x00000320, 0x00000321, 0x00003210,
@@ -204,7 +204,7 @@ static inline U64 Leftpack32_Zen2(U32* __restrict pOut, const U32* __restrict p,
 // Leftpack 4 64-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 4-bit
 // bitmask 'm'. Returns number of elements output. May unconditionally write up to 4 elements to output, regardless of
 // how many are actually output.
-static inline U64 Leftpack64(U64* __restrict pOut, const U64* __restrict p, U64 m)
+static inline U64 Leftpack64(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
         0x00000000, 0x00000010, 0x00000032, 0x00003210, 0x00000054, 0x00005410, 0x00005432, 0x00543210, 0x00000076, 0x00007610, 0x00007632, 0x00763210, 0x00007654, 0x00765410, 0x00765432, 0x76543210,
