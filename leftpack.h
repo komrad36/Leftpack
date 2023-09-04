@@ -14,8 +14,8 @@ using I32 = int32_t;
 using I64 = int64_t;
 
 // Leftpack 32 8-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 32-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 32 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (32 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 //
 // DO NOT USE THIS VERSION on AMD Zen1/Zen2 machines; it's wicked slow there due to pdep/pext. This is fixed in Zen3 and
 // after, so this version is preferred for any arch other than Zen1/Zen2 specifically.
@@ -34,8 +34,8 @@ static inline U64 Leftpack8(void* pOut, const void* p, U64 m)
 }
 
 // Leftpack 32 8-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 32-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 32 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (32 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 //
 // This version is slower on any arch other than AMD Zen1/Zen2; prefer the other version, Leftpack8, unless you are
 // targeting Zen1/Zen2.
@@ -119,8 +119,8 @@ vextracti128 $1, %4, (%9, %1, 1)
 }
 
 // Leftpack 16 16-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 16-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 16 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (16 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 static inline U64 Leftpack16(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
@@ -155,8 +155,8 @@ static inline U64 Leftpack16(void* pOut, const void* p, U64 m)
 }
 
 // Leftpack 8 32-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 8-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 8 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (8 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 //
 // DO NOT USE THIS VERSION on AMD Zen1/Zen2 machines; it's wicked slow there due to pdep/pext. This is fixed in Zen3 and
 // after, so this version is preferred for any arch other than Zen1/Zen2 specifically.
@@ -169,8 +169,8 @@ static inline U64 Leftpack32(void* pOut, const void* p, U64 m)
 }
 
 // Leftpack 8 32-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 8-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 8 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (8 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 //
 // This version is slower on any arch other than AMD Zen1/Zen2; prefer the other version, Leftpack8, unless you are
 // targeting Zen1/Zen2.
@@ -202,8 +202,8 @@ static inline U64 Leftpack32_Zen2(void* pOut, const void* p, U64 m)
 }
 
 // Leftpack 4 64-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 4-bit
-// bitmask 'm'. Returns number of elements output. May unconditionally write up to 4 elements to output, regardless of
-// how many are actually output.
+// bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (4 elements) of space is available for
+// write at 'pOut', regardless of how many bits are actually set in 'm'.
 static inline U64 Leftpack64(void* pOut, const void* p, U64 m)
 {
     alignas(64) static constexpr U32 k1[] = {
