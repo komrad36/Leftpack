@@ -118,6 +118,85 @@ vextracti128 $1, %4, (%9, %1, 1)
 #endif
 }
 
+// Leftpack 32 8-bit elements from 'p' into 'pOut', keeping only elements whose corresponding byte is set in 32-bit
+// bytemask 'm'. Returns number of elements output. Caller must ensure 32 bytes (32 elements) of space is available for
+// write at 'pOut', regardless of how many bytes are actually set in 'm'.
+//
+// Note: bytes in mask 'm' MUST have all bits replicated; that is, to keep an element, the mask byte must have value
+// 0xFF, and to discard an element, the mask byte must have value 0x00. Intermediate values are not permitted.
+//
+// DO NOT USE THIS VERSION on AMD Zen1/Zen2 machines; it's wicked slow there due to pdep/pext. Otherwise, the
+// performance between this version and the other version, Leftpack8_Zen2, is close enough that it will depend on your
+// specific problem which is faster, so try both.
+static inline U64 Leftpack8(void* pOut, const void* p, const __m256i m)
+{
+    const U32 h = U32(_mm256_movemask_epi8(m));
+    U64 x = U64(_mm_cvtsi128_si64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(p))));
+    x = _pext_u64(x, U64(_mm256_extract_epi64(m, 0)));
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(pOut), _mm_cvtsi64_si128(I64(x)));
+    x = U64(_mm_cvtsi128_si64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(uintptr_t(p) + 8))));
+    U64 c1;
+#if defined(__clang__) || defined(__GNUC__)
+    asm("popcntl %k1, %k0" : "+r"(c1) : "r"(h & 0xFF));
+#else
+    c1 = U32(_mm_popcnt_u32(h & 0xFF));
+#endif
+    x = _pext_u64(x, U64(_mm256_extract_epi64(m, 1)));
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(uintptr_t(pOut) + c1), _mm_cvtsi64_si128(I64(x)));
+    x = U64(_mm_cvtsi128_si64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(uintptr_t(p) + 16))));
+    x = _pext_u64(x, U64(_mm256_extract_epi64(m, 2)));
+#if defined(__clang__) || defined(__GNUC__)
+    asm("popcntw %w1, %w0" : "+r"(c1) : "r"(h));
+#else
+    c1 = U32(_mm_popcnt_u32(h & 0xFFFF));
+#endif
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(uintptr_t(pOut) + c1), _mm_cvtsi64_si128(I64(x)));
+#if defined(__clang__) || defined(__GNUC__)
+    asm("popcntl %k1, %k0" : "+r"(c1) : "r"(h));
+#else
+    c1 = U32(_mm_popcnt_u32(h));
+#endif
+    U64 c2;
+#if defined(__clang__) || defined(__GNUC__)
+    asm("popcntl %k1, %k0" : "+r"(c2) : "r"(h & 0xFFFFFF));
+#else
+    c2 = U32(_mm_popcnt_u32(h & 0xFFFFFF));
+#endif
+    x = U64(_mm_cvtsi128_si64(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(uintptr_t(p) + 24))));
+    x = _pext_u64(x, U64(_mm256_extract_epi64(m, 3)));
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(uintptr_t(pOut) + c2), _mm_cvtsi64_si128(I64(x)));
+    return c1;
+}
+
+// Leftpack 32 8-bit elements from 'p' into 'pOut', keeping only elements whose corresponding byte is set in 32-bit
+// bytemask 'm'. Returns number of elements output. Caller must ensure 32 bytes (32 elements) of space is available for
+// write at 'pOut', regardless of how many bytes are actually set in 'm'.
+//
+// Note: bytes in mask 'm' MUST have all bits replicated; that is, to keep an element, the mask byte must have value
+// 0xFF, and to discard an element, the mask byte must have value 0x00. Intermediate values are not permitted.
+//
+// This version may be slower than the other version, LeftPack8, on arches other than AMD Zen1/Zen2, but they're close
+// enough that it will depend on your specific problem which is faster, so try both, unless you're targeting Zen1/Zen2,
+// in which case, use exclusively this one.
+static inline U64 Leftpack8_Zen2(void* pOut, const void* p, const __m256i m)
+{
+    alignas(64) static constexpr U64 k1[] = { 0x0F0E0D0C0B0A0908, 0x8786858483828180, 0x0F0E0D0C0B0A0908, 0x8786858483828180 };
+    alignas(32) static constexpr U64 k2[] = { 0x4020100884828180, 0x4020100884828180, 0x4020100884828180, 0x4020100884828180 };
+    alignas(32) static constexpr U64 k3[] = { 0x4020100880808080, 0x4020100880808080, 0x4020100880808080, 0x4020100880808080 };
+    alignas(32) static constexpr U64 k4[] = { 0x0100010200010203, 0x0201000102000103, 0x0301000203000203, 0x0302010003020003 };
+    alignas(32) static constexpr U64 k5[] = { 0x0707070700000000, 0x0F0F0F0F08080808, 0x0707070700000000, 0x0F0F0F0F08080808 };
+    alignas(32) static constexpr U64 k6[] = { 0x0101010101010101, 0x0909090909090909, 0x0101010101010101, 0x0909090909090909 };
+    alignas(32) static constexpr U64 k7[] = { 0x0716253443526170, 0x7F7E7D7C7B7A7978, 0x0716253443526170, 0x7F7E7D7C7B7A7978 };
+    const U32 h = U32(_mm256_movemask_epi8(m));
+    const __m256i y1 = _mm256_add_epi8(_mm256_shuffle_epi8(_mm256_sad_epu8(m, _mm256_setzero_si256()), _mm256_setzero_si256()), _mm256_load_si256(reinterpret_cast<const __m256i*>(k1)));
+    const __m256i y2 = _mm256_sad_epu8(_mm256_and_si256(m, _mm256_load_si256(reinterpret_cast<const __m256i*>(k2))), _mm256_load_si256(reinterpret_cast<const __m256i*>(k3)));
+    const __m256i y3 = _mm256_xor_si256(_mm256_permutevar8x32_epi32(_mm256_load_si256(reinterpret_cast<const __m256i*>(k4)), _mm256_or_si256(y2, _mm256_slli_epi64(y2, 29))), _mm256_load_si256(reinterpret_cast<const __m256i*>(k5)));
+    const __m256i y4 = _mm256_add_epi8(_mm256_shuffle_epi8(_mm256_add_epi64(y2, y2), _mm256_load_si256(reinterpret_cast<const __m256i*>(k6))), _mm256_load_si256(reinterpret_cast<const __m256i*>(k7)));
+    const __m256i y5 = _mm256_shuffle_epi8(_mm256_shuffle_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y3), _mm256_max_epu8(y4, _mm256_shuffle_epi8(y4, y1)));
+    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(uintptr_t(pOut) + U32(_mm_popcnt_u32(h & 0xFFFF))), reinterpret_cast<__m128i*>(pOut), y5);
+    return U32(_mm_popcnt_u32(h));
+}
+
 // Leftpack 16 16-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 16-bit
 // bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (16 elements) of space is available for
 // write at 'pOut', regardless of how many bits are actually set in 'm'.
@@ -146,6 +225,46 @@ static inline U64 Leftpack16(void* pOut, const void* p, U64 m)
     const U32 n1 = U32(_mm_popcnt_u32(U32(m & 0xFFU)));
     const U32 n2 = U32(_mm_popcnt_u32(U32(m)));
     const __m256i y1 = _mm256_setr_m128i(_mm_set1_epi32(I32(k1[m & 0xFFU])), _mm_set1_epi32(I32(k1[m >> 8])));
+    const __m256i y2 = _mm256_unpacklo_epi8(y1, y1);
+    const __m256i y3 = _mm256_srlv_epi32(y2, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k2)));
+    const __m256i y4 = _mm256_and_si256(y3, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k3)));
+    const __m256i y5 = _mm256_shuffle_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y4);
+    _mm256_storeu2_m128i(reinterpret_cast<__m128i*>(uintptr_t(pOut) + 2ULL * n1), reinterpret_cast<__m128i*>(pOut), y5);
+    return n2;
+}
+
+// Leftpack 16 16-bit elements from 'p' into 'pOut', keeping only elements whose corresponding sign bit is set in the
+// corresponding 16-bit element in mask 'm'. Returns number of elements output. Caller must ensure 32 bytes (16
+// elements) of space is available for write at 'pOut', regardless of how many bits are actually set in 'm'.
+//
+// Note that only the sign bit of each mask element determines the behavior; it is not necessary to replicate it across
+// the entire mask element.
+static inline U64 Leftpack16(void* pOut, const void* p, const __m256i m)
+{
+    alignas(64) static constexpr U32 k1[] = {
+        0x00000000, 0x00000001, 0x00000003, 0x00000301, 0x00000005, 0x00000501, 0x00000503, 0x00050301, 0x00000007, 0x00000701, 0x00000703, 0x00070301, 0x00000705, 0x00070501, 0x00070503, 0x07050301,
+        0x00000009, 0x00000901, 0x00000903, 0x00090301, 0x00000905, 0x00090501, 0x00090503, 0x09050301, 0x00000907, 0x00090701, 0x00090703, 0x09070301, 0x00090705, 0x09070501, 0x09070503, 0x07050391,
+        0x0000000b, 0x00000b01, 0x00000b03, 0x000b0301, 0x00000b05, 0x000b0501, 0x000b0503, 0x0b050301, 0x00000b07, 0x000b0701, 0x000b0703, 0x0b070301, 0x000b0705, 0x0b070501, 0x0b070503, 0x070503b1,
+        0x00000b09, 0x000b0901, 0x000b0903, 0x0b090301, 0x000b0905, 0x0b090501, 0x0b090503, 0x090503b1, 0x000b0907, 0x0b090701, 0x0b090703, 0x090703b1, 0x0b090705, 0x090705b1, 0x090705b3, 0x0705b391,
+        0x0000000d, 0x00000d01, 0x00000d03, 0x000d0301, 0x00000d05, 0x000d0501, 0x000d0503, 0x0d050301, 0x00000d07, 0x000d0701, 0x000d0703, 0x0d070301, 0x000d0705, 0x0d070501, 0x0d070503, 0x070503d1,
+        0x00000d09, 0x000d0901, 0x000d0903, 0x0d090301, 0x000d0905, 0x0d090501, 0x0d090503, 0x090503d1, 0x000d0907, 0x0d090701, 0x0d090703, 0x090703d1, 0x0d090705, 0x090705d1, 0x090705d3, 0x0705d391,
+        0x00000d0b, 0x000d0b01, 0x000d0b03, 0x0d0b0301, 0x000d0b05, 0x0d0b0501, 0x0d0b0503, 0x0b0503d1, 0x000d0b07, 0x0d0b0701, 0x0d0b0703, 0x0b0703d1, 0x0d0b0705, 0x0b0705d1, 0x0b0705d3, 0x0705d3b1,
+        0x000d0b09, 0x0d0b0901, 0x0d0b0903, 0x0b0903d1, 0x0d0b0905, 0x0b0905d1, 0x0b0905d3, 0x0905d3b1, 0x0d0b0907, 0x0b0907d1, 0x0b0907d3, 0x0907d3b1, 0x0b0907d5, 0x0907d5b1, 0x0907d5b3, 0x07d5b391,
+        0x0000000f, 0x00000f01, 0x00000f03, 0x000f0301, 0x00000f05, 0x000f0501, 0x000f0503, 0x0f050301, 0x00000f07, 0x000f0701, 0x000f0703, 0x0f070301, 0x000f0705, 0x0f070501, 0x0f070503, 0x070503f1,
+        0x00000f09, 0x000f0901, 0x000f0903, 0x0f090301, 0x000f0905, 0x0f090501, 0x0f090503, 0x090503f1, 0x000f0907, 0x0f090701, 0x0f090703, 0x090703f1, 0x0f090705, 0x090705f1, 0x090705f3, 0x0705f391,
+        0x00000f0b, 0x000f0b01, 0x000f0b03, 0x0f0b0301, 0x000f0b05, 0x0f0b0501, 0x0f0b0503, 0x0b0503f1, 0x000f0b07, 0x0f0b0701, 0x0f0b0703, 0x0b0703f1, 0x0f0b0705, 0x0b0705f1, 0x0b0705f3, 0x0705f3b1,
+        0x000f0b09, 0x0f0b0901, 0x0f0b0903, 0x0b0903f1, 0x0f0b0905, 0x0b0905f1, 0x0b0905f3, 0x0905f3b1, 0x0f0b0907, 0x0b0907f1, 0x0b0907f3, 0x0907f3b1, 0x0b0907f5, 0x0907f5b1, 0x0907f5b3, 0x07f5b391,
+        0x00000f0d, 0x000f0d01, 0x000f0d03, 0x0f0d0301, 0x000f0d05, 0x0f0d0501, 0x0f0d0503, 0x0d0503f1, 0x000f0d07, 0x0f0d0701, 0x0f0d0703, 0x0d0703f1, 0x0f0d0705, 0x0d0705f1, 0x0d0705f3, 0x0705f3d1,
+        0x000f0d09, 0x0f0d0901, 0x0f0d0903, 0x0d0903f1, 0x0f0d0905, 0x0d0905f1, 0x0d0905f3, 0x0905f3d1, 0x0f0d0907, 0x0d0907f1, 0x0d0907f3, 0x0907f3d1, 0x0d0907f5, 0x0907f5d1, 0x0907f5d3, 0x07f5d391,
+        0x000f0d0b, 0x0f0d0b01, 0x0f0d0b03, 0x0d0b03f1, 0x0f0d0b05, 0x0d0b05f1, 0x0d0b05f3, 0x0b05f3d1, 0x0f0d0b07, 0x0d0b07f1, 0x0d0b07f3, 0x0b07f3d1, 0x0d0b07f5, 0x0b07f5d1, 0x0b07f5d3, 0x07f5d3b1,
+        0x0f0d0b09, 0x0d0b09f1, 0x0d0b09f3, 0x0b09f3d1, 0x0d0b09f5, 0x0b09f5d1, 0x0b09f5d3, 0x09f5d3b1, 0x0d0b09f7, 0x0b09f7d1, 0x0b09f7d3, 0x09f7d3b1, 0x0b09f7d5, 0x09f7d5b1, 0x09f7d5b3, 0xf7d5b391,
+    };
+    alignas(64) static constexpr U64 k2[] = { 0, 0x400000004, 0, 0x400000004 };
+    alignas(32) static constexpr U64 k3[] = { 0x0F0E0F0E0F0E0F0EULL, 0x0F0E0F0E0F0E0F0EULL, 0x0F0E0F0E0F0E0F0EULL, 0x0F0E0F0E0F0E0F0EULL };
+    const U64 h = U64(U32(_mm256_movemask_epi8(_mm256_packs_epi16(m, _mm256_setzero_si256()))));
+    const U32 n1 = U32(_mm_popcnt_u32(U32(h & 0xFFU)));
+    const U32 n2 = U32(_mm_popcnt_u32(U32(h)));
+    const __m256i y1 = _mm256_setr_m128i(_mm_set1_epi32(I32(k1[h & 0xFFU])), _mm_set1_epi32(I32(k1[h >> 16])));
     const __m256i y2 = _mm256_unpacklo_epi8(y1, y1);
     const __m256i y3 = _mm256_srlv_epi32(y2, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k2)));
     const __m256i y4 = _mm256_and_si256(y3, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(k3)));
@@ -201,6 +320,17 @@ static inline U64 Leftpack32_Zen2(void* pOut, const void* p, U64 m)
     return U32(_mm_popcnt_u32(U32(m)));
 }
 
+// Leftpack 8 32-bit elements from 'p' into 'pOut', keeping only elements whose corresponding sign bit is set in the
+// corresponding 32-bit element in mask 'm'. Returns number of elements output. Caller must ensure 32 bytes (8 elements)
+// of space is available for write at 'pOut', regardless of how many bits are actually set in 'm'.
+//
+// Note that only the sign bit of each mask element determines the behavior; it is not necessary to replicate it across
+// the entire mask element.
+static inline U64 Leftpack32(void* pOut, const void* p, const __m256i m)
+{
+    return Leftpack32_Zen2(pOut, p, U32(_mm256_movemask_ps(_mm256_castsi256_ps(m))));
+}
+
 // Leftpack 4 64-bit elements from 'p' into 'pOut', keeping only elements whose corresponding bit is set in 4-bit
 // bitmask 'm'. Returns number of elements output. Caller must ensure 32 bytes (4 elements) of space is available for
 // write at 'pOut', regardless of how many bits are actually set in 'm'.
@@ -214,4 +344,15 @@ static inline U64 Leftpack64(void* pOut, const void* p, U64 m)
     const __m256i y2 = _mm256_permutevar8x32_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(p)), y1);
     _mm256_storeu_si256(reinterpret_cast<__m256i*>(pOut), y2);
     return U32(_mm_popcnt_u32(U32(m)));
+}
+
+// Leftpack 4 64-bit elements from 'p' into 'pOut', keeping only elements whose corresponding sign bit is set in the
+// corresponding 64-bit element in mask 'm'. Returns number of elements output. Caller must ensure 32 bytes (4 elements)
+// of space is available for write at 'pOut', regardless of how many bits are actually set in 'm'.
+//
+// Note that only the sign bit of each mask element determines the behavior; it is not necessary to replicate it across
+// the entire mask element.
+static inline U64 Leftpack64(void* pOut, const void* p, const __m256i m)
+{
+    return Leftpack64(pOut, p, U32(_mm256_movemask_pd(_mm256_castsi256_pd(m))));
 }
